@@ -282,9 +282,22 @@
                 loading.style.display = 'block';
                 loginError.innerHTML = '';
 
-                const loginResponse = await msalInstance.loginPopup(loginRequest);
-                msalInstance.setActiveAccount(loginResponse.account);
-                await getUserInfo();
+                // Try popup first, fallback to redirect if blocked
+                try {
+                    const loginResponse = await msalInstance.loginPopup(loginRequest);
+                    msalInstance.setActiveAccount(loginResponse.account);
+                    await getUserInfo();
+                } catch (popupError) {
+                    // If popup is blocked, use redirect instead
+                    if (popupError.errorCode === 'popup_window_error' || 
+                        popupError.errorCode === 'block_nested_popups' ||
+                        popupError.message.includes('popup')) {
+                        console.log('Popup blocked, using redirect...');
+                        await msalInstance.loginRedirect(loginRequest);
+                    } else {
+                        throw popupError;
+                    }
+                }
             } catch (error) {
                 console.error('Login error:', error);
                 loginError.innerHTML = `<div class="error">Login failed: ${error.message}</div>`;
@@ -368,10 +381,9 @@
         // Sign out
         async function signOut() {
             try {
-                await msalInstance.logoutPopup();
-                successSection.classList.remove('active');
-                loginSection.style.display = 'block';
-                loginBtn.disabled = false;
+                await msalInstance.logoutRedirect({
+                    postLogoutRedirectUri: window.location.href
+                });
             } catch (error) {
                 console.error('Logout error:', error);
             }
